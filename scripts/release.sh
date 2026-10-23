@@ -59,7 +59,9 @@ if [[ "$MODE" != "--dev" ]]; then
   ditto -c -k --keepParent "$APP" "$ZIP"
   if [[ -n "${NOTARY_KEY:-}" ]]; then
     KEY_ID="${${NOTARY_KEY:t:r}#AuthKey_}"
-    xcrun notarytool submit "$ZIP" --key "$NOTARY_KEY" --key-id "$KEY_ID" ${NOTARY_ISSUER:+--issuer "$NOTARY_ISSUER"} --wait
+    ISSUER_ARGS=()
+    [[ -n "${NOTARY_ISSUER:-}" ]] && ISSUER_ARGS=(--issuer "$NOTARY_ISSUER")
+    xcrun notarytool submit "$ZIP" --key "$NOTARY_KEY" --key-id "$KEY_ID" "${ISSUER_ARGS[@]}" --wait
   else
     xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
   fi
