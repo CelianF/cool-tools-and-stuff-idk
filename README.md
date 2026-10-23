@@ -42,6 +42,16 @@ permission survives rebuilds), copies it to `/Applications` and launches it.
 - **🌐 key**: while the picker is on, macOS' “Press 🌐 key to” is set to *Do Nothing*; the previous
   choice comes back when the picker is turned off or the app quits.
 
+## Releasing
+
+```bash
+scripts/release.sh 1.0.0         # Developer ID signed + notarized, universal, published to GitHub
+scripts/release.sh 1.0.0 --dev   # Apple Development signed, not notarized
+```
+
+The default mode needs a Developer ID Application certificate and a `cooltools-notary`
+notarytool profile; the script's header explains the one-time setup.
+
 ## Regenerating data
 
 ```bash
