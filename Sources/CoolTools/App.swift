@@ -96,6 +96,7 @@ enum SelfTest {
         }
         print("dark mode:", Appearance.isDark)
         print("lid rule installed:", Caffeine.shared.lidRuleInstalled)
+        print("lid closed:", Caffeine.isLidClosed, "display asleep:", CGDisplayIsAsleep(CGMainDisplayID()) != 0)
         print("accessibility:", AXIsProcessTrusted())
         exit(0)
     }

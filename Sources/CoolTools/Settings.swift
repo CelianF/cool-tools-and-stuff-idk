@@ -124,6 +124,7 @@ final class AppSettings {
 
     var capsLockCaffeine: Bool { didSet { store.set(capsLockCaffeine, forKey: "capsLockCaffeine") } }
     var caffeineKeepsDisplayOn: Bool { didSet { store.set(caffeineKeepsDisplayOn, forKey: "caffeineKeepsDisplayOn") } }
+    var caffeineLidDisplayOff: Bool { didSet { store.set(caffeineLidDisplayOff, forKey: "caffeineLidDisplayOff") } }
     var caffeineLidClosed: Bool { didSet { store.set(caffeineLidClosed, forKey: "caffeineLidClosed") } }
     var caffeineBatteryFloor: Int { didSet { store.set(caffeineBatteryFloor, forKey: "caffeineBatteryFloor") } }
 
@@ -131,7 +132,7 @@ final class AppSettings {
         store.register(defaults: [
             "holdDuration": 0.5, "showHUD": true, "showMenuBarIcon": true,
             "emojiPickerEnabled": true, "emojiLanguage": EmojiLanguage.auto.rawValue, "skinTone": 0,
-            "capsLockCaffeine": true, "caffeineKeepsDisplayOn": false, "caffeineLidClosed": true,
+            "capsLockCaffeine": true, "caffeineKeepsDisplayOn": false, "caffeineLidDisplayOff": true, "caffeineLidClosed": true,
             "caffeineBatteryFloor": 15,
         ])
         var hotkeys = (store.data(forKey: "hotkeys")).flatMap { try? JSONDecoder().decode([Hotkey].self, from: $0) } ?? []
@@ -148,6 +149,7 @@ final class AppSettings {
         recentEmoji = store.stringArray(forKey: "recentEmoji") ?? []
         capsLockCaffeine = store.bool(forKey: "capsLockCaffeine")
         caffeineKeepsDisplayOn = store.bool(forKey: "caffeineKeepsDisplayOn")
+        caffeineLidDisplayOff = store.bool(forKey: "caffeineLidDisplayOff")
         caffeineLidClosed = store.bool(forKey: "caffeineLidClosed")
         caffeineBatteryFloor = store.integer(forKey: "caffeineBatteryFloor")
     }

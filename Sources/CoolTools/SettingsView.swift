@@ -215,6 +215,7 @@ private struct CaffeinePane: View {
             Section {
                 Toggle("Stay awake with the lid closed", isOn: $settings.caffeineLidClosed)
                     .onChange(of: settings.caffeineLidClosed) { caffeine.update() }
+                Toggle("Turn the display off when the lid closes", isOn: $settings.caffeineLidDisplayOff)
                 LabeledContent("Lid-closed helper") {
                     if caffeine.lidRuleInstalled {
                         HStack {

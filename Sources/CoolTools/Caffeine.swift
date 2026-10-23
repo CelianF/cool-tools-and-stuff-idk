@@ -19,6 +19,8 @@ final class Caffeine {
     @ObservationIgnored private var capsLock = false
     @ObservationIgnored private var assertions: [IOPMAssertionID] = []
     @ObservationIgnored private var batteryTimer: Timer?
+    @ObservationIgnored private var lidTimer: Timer?
+    @ObservationIgnored private var lastDisplaySleep = Date.distantPast
     /// Set when low battery switched caffeine off; cleared when the triggers are released.
     @ObservationIgnored private var batteryCutoff = false
     @ObservationIgnored private let lidFlagKey = "lidSleepDisabled"
@@ -69,6 +71,9 @@ final class Caffeine {
             }
         }
         setLidSleep(disabled: settings.caffeineLidClosed && lidRuleInstalled)
+        if lidTimer == nil {
+            lidTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.checkLid() }
+        }
         if batteryTimer == nil {
             batteryTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in self?.checkBattery() }
         }
@@ -80,6 +85,8 @@ final class Caffeine {
         if UserDefaults.standard.bool(forKey: lidFlagKey) { setLidSleep(disabled: false) }
         batteryTimer?.invalidate()
         batteryTimer = nil
+        lidTimer?.invalidate()
+        lidTimer = nil
     }
 
     private func releaseAssertions() {
@@ -92,6 +99,22 @@ final class Caffeine {
         guard disabled != current else { return }
         let status = Shell.run("/usr/bin/sudo", ["-n", Self.pmset] + pmsetArgs + [disabled ? "1" : "0"])
         UserDefaults.standard.set(disabled && status == 0, forKey: lidFlagKey)
+    }
+
+    /// With sleep disabled, closing the lid can leave the built-in panel lit against the keyboard.
+    /// While the lid is shut, keep the display asleep (re-sleeping it if something wakes it).
+    private func checkLid() {
+        guard settings.caffeineLidDisplayOff, Self.isLidClosed, CGDisplayIsAsleep(CGMainDisplayID()) == 0,
+              Date().timeIntervalSince(lastDisplaySleep) > 5 else { return }
+        lastDisplaySleep = Date()
+        DispatchQueue.global().async { Shell.run(Self.pmset, ["displaysleepnow"]) }
+    }
+
+    static var isLidClosed: Bool {
+        let root = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
+        defer { IOObjectRelease(root) }
+        return IORegistryEntryCreateCFProperty(root, "AppleClamshellState" as CFString, kCFAllocatorDefault, 0)?
+            .takeRetainedValue() as? Bool ?? false
     }
 
     private func checkBattery() {
