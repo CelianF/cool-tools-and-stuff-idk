@@ -12,6 +12,8 @@ final class Caffeine {
 
     private(set) var isActive = false
     private(set) var lidRuleInstalled = false
+    /// Arguments sudo will run without a password: ["disablesleep"] or ["-a", "disablesleep"].
+    @ObservationIgnored private var pmsetArgs: [String] = ["disablesleep"]
     var manual = false { didSet { update(announce: true) } }
 
     @ObservationIgnored private var capsLock = false
@@ -45,8 +47,10 @@ final class Caffeine {
         let active = wanted && !batteryCutoff
         if active { activate() } else { deactivate() }
         if announce, active != isActive {
+            // Say so when the lid would still put the Mac to sleep, instead of failing silently.
+            let lidCovered = !settings.caffeineLidClosed || UserDefaults.standard.bool(forKey: lidFlagKey)
             HUD.show(symbol: active ? "cup.and.heat.waves.fill" : "cup.and.saucer",
-                     title: active ? "Caffeinated" : "Caffeine off")
+                     title: active ? (lidCovered ? "Caffeinated" : "Caffeinated · lid will still sleep") : "Caffeine off")
         }
         isActive = active
     }
@@ -86,7 +90,7 @@ final class Caffeine {
     private func setLidSleep(disabled: Bool) {
         let current = UserDefaults.standard.bool(forKey: lidFlagKey)
         guard disabled != current else { return }
-        let status = Shell.run("/usr/bin/sudo", ["-n", Self.pmset, "-a", "disablesleep", disabled ? "1" : "0"])
+        let status = Shell.run("/usr/bin/sudo", ["-n", Self.pmset] + pmsetArgs + [disabled ? "1" : "0"])
         UserDefaults.standard.set(disabled && status == 0, forKey: lidFlagKey)
     }
 
@@ -108,13 +112,20 @@ final class Caffeine {
     // MARK: Lid-closed setup
 
     func refreshLidRule() {
-        lidRuleInstalled = Shell.run("/usr/bin/sudo", ["-n", "-l", Self.pmset, "-a", "disablesleep", "1"]) == 0
+        // `sudo -l <cmd>` succeeds for any admin, so look for an explicit NOPASSWD rule instead.
+        let rules = Shell.output("/usr/bin/sudo", ["-n", "-l"]).split(separator: "\n").filter { $0.contains("NOPASSWD") }
+        let form = [["disablesleep"], ["-a", "disablesleep"]].first { args in
+            let command = ([Self.pmset] + args).joined(separator: " ")
+            return rules.contains { $0.contains(command + " 1") }
+        }
+        lidRuleInstalled = form != nil
+        if let form { pmsetArgs = form }
     }
 
     /// Asks for an admin password once and installs a sudoers rule that only allows toggling disablesleep.
     func installLidRule() {
         let user = NSUserName()
-        let rule = "\(user) ALL=(root) NOPASSWD: \(Self.pmset) -a disablesleep 0, \(Self.pmset) -a disablesleep 1"
+        let rule = "\(user) ALL=(root) NOPASSWD: \(Self.pmset) disablesleep 0, \(Self.pmset) disablesleep 1"
         let shell = """
         tmp=$(mktemp) && printf '%s\\n' '\(rule)' > "$tmp" && /usr/sbin/visudo -cf "$tmp" && \
         /usr/bin/install -m 0440 -o root -g wheel "$tmp" \(Self.ruleFile); rm -f "$tmp"

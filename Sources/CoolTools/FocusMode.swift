@@ -36,10 +36,12 @@ enum FocusMode {
             AXUIElementPerformAction(menuItem, kAXPressAction as CFString)
             guard wait({ isOpen(ccApp) }) else { return false }
         }
-        // Picking a mode closes Control Center by itself; only close it if it's still up.
+        // Escape backs out of the Focus list, a second one closes Control Center.
         defer {
-            Thread.sleep(forTimeInterval: 0.3)
-            if isOpen(ccApp) { AXUIElementPerformAction(menuItem, kAXPressAction as CFString) }
+            for _ in 0..<3 where isOpen(ccApp) {
+                pressEscape()
+                _ = wait({ !isOpen(ccApp) }, timeout: 0.4)
+            }
         }
 
         // Expand the Focus tile into its list of modes ("show details" is a localized custom action).
@@ -57,8 +59,15 @@ enum FocusMode {
 
     // MARK: AX helpers
 
-    /// Control Center keeps its window around off-screen; it only has content while it's shown.
-    private static func isOpen(_ app: AXUIElement) -> Bool { !(value(app, kAXChildrenAttribute) as [AXUIElement]? ?? []).isEmpty }
+    private static func isOpen(_ app: AXUIElement) -> Bool { !(value(app, kAXWindowsAttribute) as [AXUIElement]? ?? []).isEmpty }
+
+    private static func pressEscape() {
+        for down in [true, false] {
+            let e = CGEvent(keyboardEventSource: nil, virtualKey: 53, keyDown: down)
+            e?.setIntegerValueField(.eventSourceUserData, value: KeyEngine.syntheticMarker)
+            e?.post(tap: .cghidEventTap)
+        }
+    }
 
     private static func wait(_ condition: () -> Bool, timeout: TimeInterval = 2) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
