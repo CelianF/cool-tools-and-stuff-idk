@@ -91,7 +91,7 @@ enum SelfTest {
         let store = EmojiStore.shared
         store.loadNow()
         print("emoji renderable:", store.all.count)
-        for q in ["coeur", "heart", "chat", "pouce", "thumbs up", "drapeau france", "🎉", "visage rieur"] {
+        for q in ["standing", "debout", "coeur", "heart", "chat", "pouce", "thumbs up", "drapeau france", "🎉", "visage rieur"] {
             print(q, "->", store.search(q).prefix(8).map(\.char).joined())
         }
         print("dark mode:", Appearance.isDark)

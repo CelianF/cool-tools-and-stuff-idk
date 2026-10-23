@@ -39,7 +39,6 @@ final class EmojiPicker: NSObject, NSWindowDelegate {
     }()
 
     var isOpen: Bool { panel.isVisible }
-
     /// fn / 🌐 tap: open in a text field, close if open, retype the last emoji on a quick double tap.
     func globeTapped() {
         guard isOpen else { return open(requireTextField: true) }
@@ -238,10 +237,13 @@ enum EmojiTyper {
 
 // MARK: - Model
 
-struct PickerItem: Identifiable {
-    let id: Int        // position in the flat list
+struct PickerItem {
+    let index: Int     // position in the flat list (selection, arrow keys)
     let text: String   // what gets typed (skin tone applied)
     let emoji: Emoji
+    let section: String
+    /// View identity: what the cell shows, never its position, so a new search can't reuse stale cells.
+    var key: String { "\(section)/\(text)" }
 }
 
 struct PickerSection: Identifiable {
@@ -252,7 +254,7 @@ struct PickerSection: Identifiable {
 
 @Observable
 final class PickerModel {
-    var query = "" { didSet { if query != oldValue { rebuild(); selection = 0 } } }
+    var query = "" { didSet { if query != oldValue { rebuild(); selection = 0; scrollTarget = 0 } } }
     var selection = 0
     var openCount = 0
     var scrollTarget: Int?
@@ -262,9 +264,11 @@ final class PickerModel {
     private var settings: AppSettings { .shared }
     var french: Bool { settings.emojiLanguage.isFrench }
 
-    var selectedItem: PickerItem? {
-        guard selection < flat.count else { return nil }
-        let pos = flat[selection]
+    var selectedItem: PickerItem? { item(at: selection) }
+
+    func item(at index: Int) -> PickerItem? {
+        guard index < flat.count else { return nil }
+        let pos = flat[index]
         return sections[pos.section].items[pos.index]
     }
 
@@ -279,29 +283,29 @@ final class PickerModel {
         let store = EmojiStore.shared
         let tone = settings.skinTone
         var counter = 0
-        func items(_ list: [(String, Emoji)]) -> [PickerItem] {
+        func items(_ list: [(String, Emoji)], _ section: String) -> [PickerItem] {
             list.map { text, emoji in
                 defer { counter += 1 }
-                return PickerItem(id: counter, text: text, emoji: emoji)
+                return PickerItem(index: counter, text: text, emoji: emoji, section: section)
             }
         }
         var result: [PickerSection] = []
         if query.trimmingCharacters(in: .whitespaces).isEmpty {
             let recents = settings.recentEmoji.compactMap { s in store.byChar[s].map { (s, $0) } }
             if !recents.isEmpty {
-                result.append(.init(id: "recent", title: french ? "Récents" : "Recently Used", items: items(recents)))
+                result.append(.init(id: "recent", title: french ? "Récents" : "Recently Used", items: items(recents, "recent")))
             }
             var groups = Array(repeating: [Emoji](), count: EmojiGroup.all.count)
             for e in store.all { groups[e.group].append(e) }
             for (i, list) in groups.enumerated() where !list.isEmpty {
                 let group = EmojiGroup.all[i]
                 result.append(.init(id: "g\(i)", title: french ? group.fr : group.en,
-                                    items: items(list.map { ($0.display(tone: tone), $0) })))
+                                    items: items(list.map { ($0.display(tone: tone), $0) }, "g\(i)")))
             }
         } else {
             let hits = store.search(query)
             result.append(.init(id: "results", title: french ? "Résultats" : "Results",
-                                items: items(hits.map { ($0.display(tone: tone), $0) })))
+                                items: items(hits.map { ($0.display(tone: tone), $0) }, "results")))
         }
         sections = result
         flat = result.enumerated().flatMap { s, section in section.items.indices.map { (s, $0) } }
@@ -329,7 +333,7 @@ final class PickerModel {
                     i = min(lastRow * cols + col, count - 1)
                 }
             }
-            selection = sections[s].items[i].id
+            selection = sections[s].items[i].index
         }
         scrollTarget = selection
     }
@@ -355,7 +359,7 @@ private struct EmojiPickerView: View {
                     LazyVGrid(columns: grid, spacing: 2) {
                         ForEach(model.sections) { section in
                             Section {
-                                ForEach(section.items) { item in cell(item) }
+                                ForEach(section.items, id: \.key) { item in cell(item) }
                             } header: {
                                 Text(section.title)
                                     .font(.system(size: 11, weight: .semibold))
@@ -379,7 +383,7 @@ private struct EmojiPickerView: View {
                 .onChange(of: model.scrollTarget) { _, target in
                     guard let target else { return }
                     if target == 0 { proxy.scrollTo(model.sections.first?.id, anchor: .top) }
-                    else { proxy.scrollTo(target) }
+                    else if let item = model.item(at: target) { proxy.scrollTo(item.key) }
                     model.scrollTarget = nil
                 }
                 .onChange(of: categoryJump) { _, id in
@@ -443,7 +447,7 @@ private struct EmojiPickerView: View {
 
     @ViewBuilder
     private func cell(_ item: PickerItem) -> some View {
-        let selected = item.id == model.selection
+        let selected = item.index == model.selection
         let base = Text(item.text)
             .font(.system(size: 27))
             .frame(width: 40, height: 40)
@@ -451,8 +455,8 @@ private struct EmojiPickerView: View {
                 if selected { RoundedRectangle(cornerRadius: 9).fill(.tint.opacity(0.35)) }
             }
             .contentShape(.rect)
-            .id(item.id)
-            .onHover { if $0 { model.selection = item.id } }
+            .id(item.key)
+            .onHover { if $0 { model.selection = item.index } }
             .onTapGesture { picker.insert(item.text, keepOpen: NSEvent.modifierFlags.contains(.shift)) }
         if let tones = item.emoji.tones {
             base.contextMenu {
