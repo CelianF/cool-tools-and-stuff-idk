@@ -34,6 +34,7 @@ final class EmojiPicker: NSObject, NSWindowDelegate {
         host.sizingOptions = []
         glass.contentView = host
         panel.contentView = glass
+        roundFrame(of: panel, radius: 26)
         return panel
     }()
 
@@ -130,6 +131,16 @@ struct TextFocus {
     }
 
     private static func caretRect(_ el: AXUIElement) -> NSRect? {
+        // WebKit, Chromium and Electron answer the plain range query with junk but support text markers.
+        if let markers: AnyObject = copy(el, "AXSelectedTextMarkerRange") {
+            var out: AnyObject?
+            if AXUIElementCopyParameterizedAttributeValue(el, "AXBoundsForTextMarkerRange" as CFString, markers, &out) == .success,
+               let value = out, CFGetTypeID(value) == AXValueGetTypeID() {
+                var rect = CGRect.zero
+                AXValueGetValue(value as! AXValue, .cgRect, &rect)
+                if isUsable(rect) { return flip(rect) }
+            }
+        }
         if let rangeValue: AXValue = copy(el, kAXSelectedTextRangeAttribute) {
             var range = CFRange()
             AXValueGetValue(rangeValue, .cfRange, &range)
@@ -159,7 +170,7 @@ struct TextFocus {
         return rect
     }
 
-    private static func isUsable(_ r: CGRect) -> Bool { r.height > 0 && !(r.origin.x == 0 && r.origin.y == 0) }
+    private static func isUsable(_ r: CGRect) -> Bool { r.height > 0 && r.origin.x > 0 }
 
     /// AX uses top-left screen coordinates; Cocoa uses bottom-left.
     private static func flip(_ r: CGRect) -> NSRect {
@@ -184,6 +195,15 @@ struct TextFocus {
             AXUIElementSetAttributeValue(el, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
         }
     }
+}
+
+/// Clips a borderless window's frame view, so nothing in or around it can show square corners.
+func roundFrame(of window: NSWindow, radius: CGFloat) {
+    guard let frameView = window.contentView?.superview else { return }
+    frameView.wantsLayer = true
+    frameView.layer?.cornerRadius = radius
+    frameView.layer?.cornerCurve = .continuous
+    frameView.layer?.masksToBounds = true
 }
 
 final class KeyPanel: NSPanel {

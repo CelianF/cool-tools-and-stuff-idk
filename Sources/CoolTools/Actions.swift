@@ -3,8 +3,8 @@ import AppKit
 enum Actions {
     static func perform(_ action: HotkeyAction) {
         switch action {
-        case .backlightDown: KeyboardBacklight.shared.step(by: -1)
-        case .backlightUp: KeyboardBacklight.shared.step(by: 1)
+        case .backlightDown: KeyboardBacklight.step(by: -1)
+        case .backlightUp: KeyboardBacklight.step(by: 1)
         case .darkMode: Appearance.set(dark: true)
         case .lightMode: Appearance.set(dark: false)
         case .doNotDisturb: DoNotDisturb.toggle()
@@ -28,50 +28,9 @@ enum Actions {
 
 // MARK: - Keyboard backlight
 
-/// Talks to CoreBrightness' KeyboardBrightnessClient (the same thing Control Center uses).
-final class KeyboardBacklight {
-    static let shared = KeyboardBacklight()
-    private let client: NSObject?
-    private let keyboardID: UInt64
-
-    private init() {
-        dlopen("/System/Library/PrivateFrameworks/CoreBrightness.framework/CoreBrightness", RTLD_NOW)
-        let client = (NSClassFromString("KeyboardBrightnessClient") as? NSObject.Type)?.init()
-        let ids = client?.perform(NSSelectorFromString("copyKeyboardBacklightIDs"))?.takeRetainedValue() as? [NSNumber]
-        self.client = client
-        keyboardID = ids?.first?.uint64Value ?? 1
-    }
-
-    var level: Float? {
-        let sel = NSSelectorFromString("brightnessForKeyboard:")
-        guard let client, client.responds(to: sel) else { return nil }
-        typealias Fn = @convention(c) (AnyObject, Selector, UInt64) -> Float
-        return unsafeBitCast(client.method(for: sel), to: Fn.self)(client, sel, keyboardID)
-    }
-
-    private func set(_ value: Float) -> Bool {
-        guard let client else { return false }
-        let fade = NSSelectorFromString("setBrightness:fadeSpeed:commit:forKeyboard:")
-        if client.responds(to: fade) {
-            typealias Fn = @convention(c) (AnyObject, Selector, Float, Int32, Bool, UInt64) -> Bool
-            return unsafeBitCast(client.method(for: fade), to: Fn.self)(client, fade, value, 150, true, keyboardID)
-        }
-        let plain = NSSelectorFromString("setBrightness:forKeyboard:")
-        guard client.responds(to: plain) else { return false }
-        typealias Fn = @convention(c) (AnyObject, Selector, Float, UInt64) -> Bool
-        return unsafeBitCast(client.method(for: plain), to: Fn.self)(client, plain, value, keyboardID)
-    }
-
-    /// Moves in sixteenths, like the system brightness keys.
-    func step(by direction: Float) {
-        guard let current = level else {
-            MediaKey.post(direction > 0 ? 21 : 22) // NX_KEYTYPE_ILLUMINATION_UP / DOWN fallback
-            return
-        }
-        let next = min(1, max(0, ((current * 16).rounded() + direction) / 16))
-        _ = set(next)
-        HUD.show(symbol: next == 0 ? "light.min" : "light.max", title: "Keyboard", level: Double(next))
-    }
+/// Sends the system's own illumination keys, so macOS changes the backlight and shows its native HUD.
+enum KeyboardBacklight {
+    static func step(by direction: Int) { MediaKey.post(direction > 0 ? 21 : 22) } // NX_KEYTYPE_ILLUMINATION_UP / DOWN
 }
 
 enum MediaKey {

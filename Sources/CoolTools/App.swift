@@ -94,7 +94,6 @@ enum SelfTest {
         for q in ["coeur", "heart", "chat", "pouce", "thumbs up", "drapeau france", "🎉", "visage rieur"] {
             print(q, "->", store.search(q).prefix(8).map(\.char).joined())
         }
-        print("backlight level:", KeyboardBacklight.shared.level.map { String($0) } ?? "unavailable")
         print("dark mode:", Appearance.isDark)
         print("lid rule installed:", Caffeine.shared.lidRuleInstalled)
         print("accessibility:", AXIsProcessTrusted())

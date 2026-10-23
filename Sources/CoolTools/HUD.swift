@@ -20,6 +20,7 @@ enum HUD {
         glass.cornerRadius = 32
         glass.contentView = NSHostingView(rootView: HUDView(model: model))
         panel.contentView = glass
+        roundFrame(of: panel, radius: 32)
         return panel
     }()
 
@@ -34,7 +35,7 @@ enum HUD {
         model.level = level
         let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
         if let frame = screen?.visibleFrame {
-            panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.maxY - panel.frame.height - 18))
+            panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.maxY - panel.frame.height - 28))
         }
         panel.alphaValue = 1
         panel.orderFrontRegardless()

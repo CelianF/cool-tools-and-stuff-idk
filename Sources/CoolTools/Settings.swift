@@ -135,14 +135,7 @@ final class AppSettings {
             "caffeineBatteryFloor": 15,
         ])
         var hotkeys = (store.data(forKey: "hotkeys")).flatMap { try? JSONDecoder().decode([Hotkey].self, from: $0) } ?? []
-        // Keep saved choices but pick up actions added in newer versions.
-        for d in Hotkey.defaults where !hotkeys.contains(where: { $0.action == d.action }) { hotkeys.append(d) }
-        // v1.1 briefly defaulted the F6 hold to sleeping the Mac; Sleep Focus is what was meant.
-        if !store.bool(forKey: "holdSleepFocusMigrated"), let i = hotkeys.firstIndex(where: { $0.action == .doNotDisturb }),
-           hotkeys[i].hold == .sleepMac {
-            hotkeys[i].hold = .sleepFocus
-        }
-        store.set(true, forKey: "holdSleepFocusMigrated")
+        if hotkeys.count != Hotkey.defaults.count { hotkeys = Hotkey.defaults }
         self.hotkeys = hotkeys.sorted { a, b in
             HotkeyAction.allCases.firstIndex(of: a.action)! < HotkeyAction.allCases.firstIndex(of: b.action)!
         }
