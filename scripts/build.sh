@@ -22,7 +22,10 @@ fi
 
 # A stable signing identity keeps the Accessibility permission across rebuilds (ad-hoc signatures lose it).
 IDENTITY="${CODESIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/ {print $2; exit}')}"
-codesign --force --options runtime --timestamp --entitlements Resources/CoolTools.entitlements --sign "${IDENTITY:--}" "$APP"
+KEYCHAIN_ARGS=()
+[[ -n "${CODESIGN_KEYCHAIN:-}" ]] && KEYCHAIN_ARGS=(--keychain "$CODESIGN_KEYCHAIN")
+codesign --force --options runtime --timestamp --entitlements Resources/CoolTools.entitlements \
+  "${KEYCHAIN_ARGS[@]}" --sign "${IDENTITY:--}" "$APP"
 echo "Built $APP (signed with ${IDENTITY:-ad-hoc})"
 
 if [[ "${1:-}" == "--install" ]]; then

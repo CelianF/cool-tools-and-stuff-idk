@@ -45,7 +45,7 @@ permission survives rebuilds), copies it to `/Applications` and launches it.
 ## Releasing
 
 ```bash
-scripts/release.sh 1.0.0         # Developer ID signed + notarized, universal, published to GitHub
+scripts/release.sh 1.0.0         # Developer ID signed + notarized, published to GitHub
 scripts/release.sh 1.0.0 --dev   # Apple Development signed, not notarized
 ```
 
