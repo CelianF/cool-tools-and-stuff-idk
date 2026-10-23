@@ -91,6 +91,8 @@ private struct ShortcutsPane: View {
                         }
                         .labelsHidden()
                         .fixedSize()
+                        .opacity(hotkey.action.supportsHold ? 1 : 0)
+                        .disabled(!hotkey.action.supportsHold)
                         ShortcutRecorder(combo: $hotkey.combo)
                     }
                     .disabled(!hotkey.enabled && false)

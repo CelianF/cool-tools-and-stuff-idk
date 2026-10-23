@@ -35,7 +35,7 @@ struct KeyCombo: Codable, Hashable {
 }
 
 enum HotkeyAction: String, Codable, CaseIterable, Identifiable {
-    case backlightDown, backlightUp, darkMode, lightMode, doNotDisturb
+    case backlightDown, backlightUp, darkMode, lightMode, doNotDisturb, appSwitcher
     var id: String { rawValue }
 
     var title: String {
@@ -45,6 +45,7 @@ enum HotkeyAction: String, Codable, CaseIterable, Identifiable {
         case .darkMode: "Dark mode"
         case .lightMode: "Light mode"
         case .doNotDisturb: "Toggle Do Not Disturb"
+        case .appSwitcher: "App switcher (⌘⇥)"
         }
     }
 
@@ -55,11 +56,15 @@ enum HotkeyAction: String, Codable, CaseIterable, Identifiable {
         case .darkMode: "moon.fill"
         case .lightMode: "sun.max.fill"
         case .doNotDisturb: "moon.zzz.fill"
+        case .appSwitcher: "square.on.square"
         }
     }
 
     /// Whether holding the key should auto-repeat the action (only when no hold action is set).
     var repeats: Bool { self == .backlightDown || self == .backlightUp }
+
+    /// The app switcher acts while the key is held, so it can't also have a hold action.
+    var supportsHold: Bool { self != .appSwitcher }
 }
 
 enum HoldAction: String, Codable, CaseIterable, Identifiable {
@@ -90,6 +95,7 @@ struct Hotkey: Codable, Identifiable, Hashable {
         Hotkey(action: .darkMode, combo: KeyCombo(keyCode: KeyNames.f1, modifiers: .control)),
         Hotkey(action: .lightMode, combo: KeyCombo(keyCode: KeyNames.f2, modifiers: .control)),
         Hotkey(action: .doNotDisturb, combo: KeyCombo(keyCode: KeyNames.f6, modifiers: []), hold: .sleepFocus),
+        Hotkey(action: .appSwitcher, combo: KeyCombo(keyCode: KeyNames.f3, modifiers: [])),
     ]
 }
 

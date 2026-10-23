@@ -8,6 +8,7 @@ enum Actions {
         case .darkMode: Appearance.set(dark: true)
         case .lightMode: Appearance.set(dark: false)
         case .doNotDisturb: DoNotDisturb.toggle()
+        case .appSwitcher: AppSwitcher.begin(); AppSwitcher.end() // handled as press/release by KeyEngine
         }
     }
 
@@ -45,6 +46,31 @@ enum MediaKey {
             cg?.setIntegerValueField(.eventSourceUserData, value: KeyEngine.syntheticMarker)
             cg?.post(tap: .cghidEventTap)
         }
+    }
+}
+
+// MARK: - App switcher
+
+/// Drives macOS' own ⌘⇥ switcher: ⌘ goes down with the key, each Tab steps, ⌘ comes up on release.
+enum AppSwitcher {
+    static func begin() {
+        post(UInt16(55), down: true, flags: .maskCommand)  // kVK_Command
+        next(backwards: false)
+    }
+
+    static func next(backwards: Bool) {
+        let flags: CGEventFlags = backwards ? [.maskCommand, .maskShift] : .maskCommand
+        post(UInt16(48), down: true, flags: flags)  // kVK_Tab
+        post(UInt16(48), down: false, flags: flags)
+    }
+
+    static func end() { post(UInt16(55), down: false, flags: []) }
+
+    private static func post(_ key: UInt16, down: Bool, flags: CGEventFlags) {
+        guard let e = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: down) else { return }
+        e.flags = flags
+        e.setIntegerValueField(.eventSourceUserData, value: KeyEngine.syntheticMarker)
+        e.post(tap: .cghidEventTap)
     }
 }
 

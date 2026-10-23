@@ -8,6 +8,7 @@ A tiny SwiftUI menu bar app that replaces my Karabiner-Elements setup and adds a
 | --- | --- |
 | ⌘F1 / ⌘F2 | Keyboard backlight down / up |
 | ⌃F1 / ⌃F2 | Dark mode / Light mode |
+| F3 | App switcher: works like ⌘ of ⌘⇥ — tap to jump to the last app, hold + Tab to pick one |
 | F6 (tap) | Toggle Do Not Disturb |
 | F6 (hold) | Toggle Sleep Focus (or sleep / lock / caffeine — configurable) |
 | fn / 🌐 (alone, in a text field) | Liquid Glass emoji picker at the caret, English + French search |

@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import ApplicationServices
 import Observation
 
@@ -18,6 +19,8 @@ final class KeyEngine {
     @ObservationIgnored private var tap: CFMachPort?
     @ObservationIgnored private var recorder: ((KeyCombo) -> Void)?
     @ObservationIgnored private var swallowed = Set<UInt16>()
+    /// F3 (by default) held as the app switcher's ⌘: Tab cycles, releasing it switches.
+    @ObservationIgnored private var switcherKey: UInt16?
     @ObservationIgnored private var holding: (key: UInt16, hotkey: Hotkey, timer: DispatchWorkItem, fired: Bool)?
     @ObservationIgnored private var fnArmedAt: Date?
     @ObservationIgnored private var capsLock = false
@@ -133,8 +136,17 @@ final class KeyEngine {
             return true
         }
 
+        if switcherKey != nil, key == UInt16(kVK_Tab) {
+            if down { AppSwitcher.next(backwards: mods.contains(.shift)) }
+            return true
+        }
+
         guard down else {
             guard swallowed.remove(key) != nil else { return false }
+            if switcherKey == key {
+                switcherKey = nil
+                AppSwitcher.end()
+            }
             if let h = holding, h.key == key {
                 holding = nil
                 h.timer.cancel()
@@ -146,6 +158,14 @@ final class KeyEngine {
         if holding?.key == key { return true }
         guard let hotkey = settings.hotkeys.first(where: { $0.enabled && $0.combo == combo }) else { return false }
         swallowed.insert(key)
+
+        if hotkey.action == .appSwitcher {
+            if !isRepeat, switcherKey == nil {
+                switcherKey = key
+                AppSwitcher.begin()
+            }
+            return true
+        }
 
         if hotkey.hold != .none {
             guard !isRepeat else { return true }
