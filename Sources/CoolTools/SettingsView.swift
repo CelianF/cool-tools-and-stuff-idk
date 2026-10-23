@@ -9,7 +9,6 @@ struct SettingsView: View {
             Tab("General", systemImage: "gearshape") { GeneralPane() }
             Tab("Shortcuts", systemImage: "keyboard") { ShortcutsPane() }
             Tab("Emoji", systemImage: "face.smiling") { EmojiPane() }
-            Tab("Focus", systemImage: "moon") { FocusPane() }
             Tab("Caffeine", systemImage: "cup.and.saucer") { CaffeinePane() }
         }
         .frame(width: 560, height: 520)
@@ -146,16 +145,20 @@ private struct ShortcutRecorder: View {
 
 private struct EmojiPane: View {
     @Bindable private var settings = AppSettings.shared
-    @State private var globeUsage = Self.readGlobeUsage()
+    @State private var globeUsage = GlobeKey.current
     private let store = EmojiStore.shared
 
     var body: some View {
         Form {
             Section {
                 Toggle("Open emoji picker with fn / 🌐", isOn: $settings.emojiPickerEnabled)
+                    .onChange(of: settings.emojiPickerEnabled) { _, on in
+                        on ? GlobeKey.claim() : GlobeKey.release()
+                        globeUsage = GlobeKey.current
+                    }
                 if settings.emojiPickerEnabled && globeUsage != 0 {
                     VStack(alignment: .leading, spacing: 6) {
-                        Label("macOS also reacts to the 🌐 key. Set “Press 🌐 key to” → “Do Nothing” so only Cool Tools' picker opens.",
+                        Label("macOS still opens its own picker on 🌐. Set “Press 🌐 key to” → “Do Nothing”.",
                               systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
                         Button("Open Keyboard Settings") {
@@ -165,7 +168,7 @@ private struct EmojiPane: View {
                 }
                 Button("Open Picker Now") { EmojiPicker.shared.open() }
             } footer: {
-                Text("\(store.all.count) emoji indexed with English and French names. Arrows to move, ↩ to insert, ⇧↩ or ⇧-click to keep it open, right-click for skin tones.")
+                Text("\(store.all.count) emoji indexed with English and French names. Opens only when you're typing in a text field. Arrows to move, ↩ to insert, ⇧↩ or ⇧-click to keep it open, right-click for skin tones. Double-tap 🌐 to type your last emoji again.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Options") {
@@ -184,71 +187,8 @@ private struct EmojiPane: View {
         }
         .formStyle(.grouped)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            globeUsage = Self.readGlobeUsage()
+            globeUsage = GlobeKey.current
         }
-    }
-
-    /// 0 = Do Nothing, 1 = Change Input Source, 2 = Show Emoji & Symbols, 3 = Start Dictation.
-    private static func readGlobeUsage() -> Int {
-        CFPreferencesAppSynchronize("com.apple.HIToolbox" as CFString)
-        return (CFPreferencesCopyAppValue("AppleFnUsageType" as CFString, "com.apple.HIToolbox" as CFString) as? Int) ?? 1
-    }
-}
-
-// MARK: - Focus
-
-private struct FocusPane: View {
-    @Bindable private var settings = AppSettings.shared
-    @State private var installed: [String] = []
-
-    var body: some View {
-        Form {
-            Section {
-                shortcutRow("Do Not Disturb", $settings.dndShortcut, helper: Focus.helperShortcuts[0])
-                shortcutRow("Sleep Focus", $settings.sleepFocusShortcut, helper: Focus.helperShortcuts[1])
-            } header: {
-                Text("Shortcuts used to toggle Focus")
-            } footer: {
-                Text("macOS only lets other apps change Focus through the Shortcuts app. Click Install to add the ready-made helper shortcuts (Shortcuts asks you to confirm), or pick one of your own.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section {
-                Button("Refresh") { Task { installed = await Focus.installedShortcuts() } }
-            }
-        }
-        .formStyle(.grouped)
-        .task { installed = await Focus.installedShortcuts() }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            Task { installed = await Focus.installedShortcuts() }
-        }
-    }
-
-    private func shortcutRow(_ title: String, _ name: Binding<String>, helper: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(title).font(.headline)
-                Spacer()
-                if installed.contains(name.wrappedValue) {
-                    Label("Ready", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-                    Button("Test") { Focus.run(name.wrappedValue, title: title, symbol: "moon.fill") }
-                } else {
-                    Label("Not found", systemImage: "xmark.circle.fill").foregroundStyle(.red)
-                }
-            }
-            HStack {
-                Picker("Shortcut", selection: name) {
-                    if !installed.contains(name.wrappedValue) { Text(name.wrappedValue).tag(name.wrappedValue) }
-                    ForEach(installed, id: \.self) { Text($0).tag($0) }
-                }
-                if !installed.contains(helper) {
-                    Button("Install") {
-                        name.wrappedValue = helper
-                        Focus.install(helper)
-                    }
-                }
-            }
-        }
-        .padding(.vertical, 4)
     }
 }
 

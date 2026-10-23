@@ -108,7 +108,7 @@ final class KeyEngine {
             } else if let armed = fnArmedAt {
                 fnArmedAt = nil
                 if Date().timeIntervalSince(armed) < 0.8, settings.emojiPickerEnabled {
-                    DispatchQueue.main.async { EmojiPicker.shared.toggle() }
+                    DispatchQueue.main.async { EmojiPicker.shared.globeTapped() }
                 }
             }
         } else {

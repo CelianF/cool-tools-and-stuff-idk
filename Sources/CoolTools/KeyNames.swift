@@ -13,6 +13,7 @@ enum KeyNames {
         177: f4,  // Spotlight
         176: f5,  // Dictation
         178: f6,  // Do Not Disturb
+        106: f6,  // F16: what Karabiner-Elements turns F6 into
     ]
 
     /// NX_KEYTYPE_* values carried by NSSystemDefined media-key events, folded onto their F-key.

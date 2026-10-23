@@ -63,13 +63,17 @@ enum HotkeyAction: String, Codable, CaseIterable, Identifiable {
 }
 
 enum HoldAction: String, Codable, CaseIterable, Identifiable {
-    case none, sleepFocus, sleepMac, lockScreen, toggleCaffeine
+    case none, sleepMac, lockScreen, toggleCaffeine
     var id: String { rawValue }
+
+    init(from decoder: Decoder) throws {
+        // Older builds stored "sleepFocus", which needed Shortcuts; fall back to sleeping the Mac.
+        self = HoldAction(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .sleepMac
+    }
 
     var title: String {
         switch self {
         case .none: "Nothing"
-        case .sleepFocus: "Toggle Sleep Focus"
         case .sleepMac: "Put Mac to sleep"
         case .lockScreen: "Lock screen"
         case .toggleCaffeine: "Toggle caffeine"
@@ -89,7 +93,7 @@ struct Hotkey: Codable, Identifiable, Hashable {
         Hotkey(action: .backlightUp, combo: KeyCombo(keyCode: KeyNames.f2, modifiers: .command)),
         Hotkey(action: .darkMode, combo: KeyCombo(keyCode: KeyNames.f1, modifiers: .control)),
         Hotkey(action: .lightMode, combo: KeyCombo(keyCode: KeyNames.f2, modifiers: .control)),
-        Hotkey(action: .doNotDisturb, combo: KeyCombo(keyCode: KeyNames.f6, modifiers: []), hold: .sleepFocus),
+        Hotkey(action: .doNotDisturb, combo: KeyCombo(keyCode: KeyNames.f6, modifiers: []), hold: .sleepMac),
     ]
 }
 
@@ -127,17 +131,12 @@ final class AppSettings {
     var caffeineLidClosed: Bool { didSet { store.set(caffeineLidClosed, forKey: "caffeineLidClosed") } }
     var caffeineBatteryFloor: Int { didSet { store.set(caffeineBatteryFloor, forKey: "caffeineBatteryFloor") } }
 
-    var dndShortcut: String { didSet { store.set(dndShortcut, forKey: "dndShortcut") } }
-    var sleepFocusShortcut: String { didSet { store.set(sleepFocusShortcut, forKey: "sleepFocusShortcut") } }
-
     private init() {
         store.register(defaults: [
             "holdDuration": 0.5, "showHUD": true, "showMenuBarIcon": true,
             "emojiPickerEnabled": true, "emojiLanguage": EmojiLanguage.auto.rawValue, "skinTone": 0,
             "capsLockCaffeine": true, "caffeineKeepsDisplayOn": false, "caffeineLidClosed": true,
             "caffeineBatteryFloor": 15,
-            "dndShortcut": "Cool Tools - Toggle Do Not Disturb",
-            "sleepFocusShortcut": "Cool Tools - Toggle Sleep Focus",
         ])
         var hotkeys = (store.data(forKey: "hotkeys")).flatMap { try? JSONDecoder().decode([Hotkey].self, from: $0) } ?? []
         // Keep saved choices but pick up actions added in newer versions.
@@ -156,8 +155,6 @@ final class AppSettings {
         caffeineKeepsDisplayOn = store.bool(forKey: "caffeineKeepsDisplayOn")
         caffeineLidClosed = store.bool(forKey: "caffeineLidClosed")
         caffeineBatteryFloor = store.integer(forKey: "caffeineBatteryFloor")
-        dndShortcut = store.string(forKey: "dndShortcut") ?? ""
-        sleepFocusShortcut = store.string(forKey: "sleepFocusShortcut") ?? ""
     }
 
     func resetHotkeys() { hotkeys = Hotkey.defaults }

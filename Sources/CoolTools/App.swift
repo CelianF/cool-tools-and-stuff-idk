@@ -20,6 +20,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         if CommandLine.arguments.contains("--selftest") { SelfTest.run() }
         EmojiStore.shared.load()
+        if AppSettings.shared.emojiPickerEnabled { GlobeKey.claim() }
+        DoNotDisturb.ensureHotkey()
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { note in
+            guard AppSettings.shared.emojiPickerEnabled,
+                  let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            TextFocus.wakeAccessibility(of: app)
+        }
+        if let front = NSWorkspace.shared.frontmostApplication { TextFocus.wakeAccessibility(of: front) }
         _ = Caffeine.shared
         let trusted = AXIsProcessTrusted()
         KeyEngine.shared.start(prompt: !trusted)
@@ -36,6 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         Caffeine.shared.shutdown()
+        GlobeKey.release()
     }
 }
 
@@ -89,5 +99,38 @@ enum SelfTest {
         print("lid rule installed:", Caffeine.shared.lidRuleInstalled)
         print("accessibility:", AXIsProcessTrusted())
         exit(0)
+    }
+}
+
+/// While the picker is on, macOS' own 🌐 action is set to "Do Nothing" so the two don't both open.
+/// The user's previous choice is remembered and put back when the picker is turned off or the app quits.
+enum GlobeKey {
+    private static let domain = "com.apple.HIToolbox" as CFString
+    private static let key = "AppleFnUsageType" as CFString
+    private static let savedKey = "savedGlobeUsage"
+
+    /// 0 = Do Nothing, 1 = Change Input Source, 2 = Show Emoji & Symbols, 3 = Start Dictation.
+    static var current: Int {
+        CFPreferencesAppSynchronize(domain)
+        return (CFPreferencesCopyAppValue(key, domain) as? Int) ?? 1
+    }
+
+    static func claim() {
+        let value = current
+        guard value != 0 else { return }
+        UserDefaults.standard.set(value, forKey: savedKey)
+        write(0)
+    }
+
+    static func release() {
+        guard let saved = UserDefaults.standard.object(forKey: savedKey) as? Int else { return }
+        UserDefaults.standard.removeObject(forKey: savedKey)
+        write(saved)
+    }
+
+    private static func write(_ value: Int) {
+        CFPreferencesSetAppValue(key, value as CFNumber, domain)
+        CFPreferencesAppSynchronize(domain)
+        Shell.run("/System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings", ["-u"])
     }
 }

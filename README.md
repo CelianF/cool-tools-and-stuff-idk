@@ -9,8 +9,9 @@ A tiny SwiftUI menu bar app that replaces my Karabiner-Elements setup and adds a
 | ⌘F1 / ⌘F2 | Keyboard backlight down / up |
 | ⌃F1 / ⌃F2 | Dark mode / Light mode |
 | F6 (tap) | Toggle Do Not Disturb |
-| F6 (hold) | Toggle Sleep Focus (or sleep / lock / caffeine — configurable) |
-| fn / 🌐 (alone) | Liquid Glass emoji picker, English + French search |
+| F6 (hold) | Put the Mac to sleep (or lock / caffeine — configurable) |
+| fn / 🌐 (alone, in a text field) | Liquid Glass emoji picker at the caret, English + French search |
+| fn / 🌐 double tap | Type the last emoji again |
 | Caps Lock on | Caffeinated: no idle sleep, and no sleep with the lid closed |
 
 Everything can be rebound or turned off in Settings. Keys that aren't bound pass straight through,
@@ -29,18 +30,21 @@ permission survives rebuilds), copies it to `/Applications` and launches it.
 
 1. **Accessibility** — grant it when asked (System Settings → Privacy & Security → Accessibility).
 2. **Karabiner** — quit it or remove its F1/F2 rules; Cool Tools does the same job.
-3. **🌐 key** — System Settings → Keyboard → “Press 🌐 key to” → **Do Nothing**, so only Cool Tools' picker opens.
-4. **Focus** — Settings → Focus → *Install* adds two helper Shortcuts. macOS only lets apps toggle
-   Focus modes through Shortcuts.
-5. **Lid closed** — Settings → Caffeine → *Set Up…* installs a sudoers rule that allows only
+3. **Lid closed** — Settings → Caffeine → *Set Up…* installs a sudoers rule that allows only
    `pmset -a disablesleep 0|1`.
+
+## How the system bits work
+
+- **Do Not Disturb** posts macOS' own “Turn Do Not Disturb On/Off” keyboard shortcut (assigning
+  ⌃⌥⇧⌘F19 if it has none) — apps can't call the Focus service directly.
+- **🌐 key**: while the picker is on, macOS' “Press 🌐 key to” is set to *Do Nothing*; the previous
+  choice comes back when the picker is turned off or the app quits.
 
 ## Regenerating data
 
 ```bash
 python3 -I scripts/gen_emoji.py       # Resources/emoji.json from Unicode + CLDR (en, fr)
 swift scripts/make_icon.swift         # Resources/AppIcon.icns from Assets/icon-source.jpg
-python3 -I scripts/make_shortcuts.py  # signed helper Shortcuts in Resources/Shortcuts
 ```
 
 `"/Applications/Cool Tools.app/Contents/MacOS/CoolTools" --selftest` prints what the emoji index,

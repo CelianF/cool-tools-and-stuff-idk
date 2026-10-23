@@ -7,16 +7,13 @@ enum Actions {
         case .backlightUp: KeyboardBacklight.shared.step(by: 1)
         case .darkMode: Appearance.set(dark: true)
         case .lightMode: Appearance.set(dark: false)
-        case .doNotDisturb:
-            Focus.run(AppSettings.shared.dndShortcut, title: "Do Not Disturb", symbol: "moon.fill")
+        case .doNotDisturb: DoNotDisturb.toggle()
         }
     }
 
     static func performHold(_ action: HoldAction) {
         switch action {
         case .none: break
-        case .sleepFocus:
-            Focus.run(AppSettings.shared.sleepFocusShortcut, title: "Sleep Focus", symbol: "bed.double.fill")
         case .sleepMac:
             HUD.show(symbol: "powersleep", title: "Sleeping…")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { Shell.run("/usr/bin/pmset", ["sleepnow"]) }
@@ -120,33 +117,50 @@ enum Appearance {
     }
 }
 
-// MARK: - Focus (via Shortcuts, the only supported way to toggle Focus modes)
+// MARK: - Do Not Disturb
 
-enum Focus {
-    static let helperShortcuts = ["Cool Tools - Toggle Do Not Disturb", "Cool Tools - Toggle Sleep Focus"]
+/// Toggles Do Not Disturb through macOS' own "Turn Do Not Disturb On/Off" keyboard shortcut
+/// (symbolic hotkey 175). Third-party apps can't call the Focus service directly, but WindowServer
+/// handles that shortcut like any other system shortcut. If it isn't assigned yet we give it an
+/// out-of-the-way combo (⌃⌥⇧⌘F19) and post that.
+enum DoNotDisturb {
+    private static let domain = "com.apple.symbolichotkeys" as CFString
+    private static let key = "AppleSymbolicHotKeys" as CFString
+    private static let id = "175"
+    private static let defaultKeyCode = 80 // F19
+    private static let defaultMods = 0x020000 | 0x040000 | 0x080000 | 0x100000 | 0x800000 // ⇧⌃⌥⌘ fn
 
-    static func run(_ shortcut: String, title: String, symbol: String) {
-        HUD.show(symbol: symbol, title: title)
-        DispatchQueue.global().async {
-            let status = Shell.run("/usr/bin/shortcuts", ["run", shortcut])
-            if status != 0 {
-                DispatchQueue.main.async {
-                    HUD.show(symbol: "exclamationmark.triangle.fill", title: "Shortcut “\(shortcut)” missing")
-                }
-            }
+    static func toggle() {
+        HUD.show(symbol: "moon.fill", title: "Do Not Disturb")
+        guard let (keyCode, mods) = ensureHotkey() else {
+            HUD.show(symbol: "exclamationmark.triangle.fill", title: "Do Not Disturb unavailable")
+            return
+        }
+        for down in [true, false] {
+            guard let e = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(keyCode), keyDown: down) else { continue }
+            e.flags = CGEventFlags(rawValue: UInt64(mods))
+            e.setIntegerValueField(.eventSourceUserData, value: KeyEngine.syntheticMarker)
+            e.post(tap: .cghidEventTap)
         }
     }
 
-    static func installedShortcuts() async -> [String] {
-        await Task.detached {
-            Shell.output("/usr/bin/shortcuts", ["list"]).split(separator: "\n").map(String.init)
-        }.value
-    }
-
-    /// Opens a bundled helper shortcut so Shortcuts offers to add it.
-    static func install(_ name: String) {
-        guard let url = Bundle.main.url(forResource: name, withExtension: "shortcut", subdirectory: "Shortcuts") else { return }
-        NSWorkspace.shared.open(url)
+    /// Returns the (keycode, modifier mask) of the DND shortcut, assigning one if needed.
+    @discardableResult
+    static func ensureHotkey() -> (Int, Int)? {
+        CFPreferencesAppSynchronize(domain)
+        var all = (CFPreferencesCopyAppValue(key, domain) as? [String: Any]) ?? [:]
+        if let entry = all[id] as? [String: Any], entry["enabled"] as? Bool == true,
+           let value = entry["value"] as? [String: Any], let p = value["parameters"] as? [Int], p.count == 3,
+           p[1] != 65535 {
+            return (p[1], p[2])
+        }
+        all[id] = ["enabled": true,
+                   "value": ["type": "standard", "parameters": [65535, defaultKeyCode, defaultMods]]] as [String: Any]
+        CFPreferencesSetAppValue(key, all as CFDictionary, domain)
+        CFPreferencesAppSynchronize(domain)
+        // Makes WindowServer reload the shortcut table without a logout.
+        Shell.run("/System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings", ["-u"])
+        return (defaultKeyCode, defaultMods)
     }
 }
 

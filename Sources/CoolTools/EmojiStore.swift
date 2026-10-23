@@ -73,7 +73,7 @@ final class EmojiStore {
         guard let url = Bundle.main.url(forResource: "emoji", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let rows = try? JSONSerialization.jsonObject(with: data) as? [[Any]] else { return [] }
-        let font = CTFontCreateWithName("AppleColorEmoji" as CFString, 20, nil)
+        let font = CTFontCreateUIFontForLanguage(.system, 27, nil)!
         var out: [Emoji] = []
         out.reserveCapacity(rows.count)
         for row in rows {
@@ -91,16 +91,22 @@ final class EmojiStore {
         return out
     }
 
-    /// Supported sequences shape into a single glyph in Apple Color Emoji; anything newer than the
-    /// installed font falls apart into several, so those are hidden instead of showing as boxes.
+    /// Supported emoji are drawn by Apple Color Emoji as one visible glyph. Emoji newer than the
+    /// installed font fall back to LastResort (a box) or split into several glyphs, so they're hidden.
     private static func isRenderable(_ s: String, font: CTFont) -> Bool {
         let attr = NSAttributedString(string: s, attributes: [kCTFontAttributeName as NSAttributedString.Key: font])
         let line = CTLineCreateWithAttributedString(attr)
-        guard CTLineGetGlyphCount(line) == 1,
-              let run = (CTLineGetGlyphRuns(line) as? [CTRun])?.first else { return false }
-        var glyph = CGGlyph(0)
-        CTRunGetGlyphs(run, CFRange(location: 0, length: 1), &glyph)
-        return glyph != 0
+        var visible = 0
+        for run in (CTLineGetGlyphRuns(line) as? [CTRun]) ?? [] {
+            let attrs = CTRunGetAttributes(run) as NSDictionary
+            guard let runFont = attrs[kCTFontAttributeName] as! CTFont?,
+                  (CTFontCopyPostScriptName(runFont) as String).contains("AppleColorEmoji") else { return false }
+            let count = CTRunGetGlyphCount(run)
+            var advances = [CGSize](repeating: .zero, count: count)
+            CTRunGetAdvances(run, CFRange(location: 0, length: count), &advances)
+            visible += advances.filter { $0.width > 0.5 }.count
+        }
+        return visible == 1
     }
 
     static func fold(_ s: String) -> String {

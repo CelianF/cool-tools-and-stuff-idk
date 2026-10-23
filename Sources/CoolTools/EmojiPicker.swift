@@ -8,36 +8,54 @@ final class EmojiPicker: NSObject, NSWindowDelegate {
     static let shared = EmojiPicker()
     static let columns = 9
     static let size = NSSize(width: 412, height: 452)
+    /// Opening and closing within this window counts as a double tap: retype the last emoji.
+    static let doubleTapInterval: TimeInterval = 0.45
 
     let model = PickerModel()
     private var keyMonitor: Any?
+    private var openedAt = Date.distantPast
     private lazy var panel: KeyPanel = {
         let panel = KeyPanel(contentRect: NSRect(origin: .zero, size: Self.size),
                              styleMask: [.borderless, .nonactivatingPanel, .fullSizeContentView],
                              backing: .buffered, defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        // The glass view draws its own rounded shadow; the window's would be a square.
+        panel.hasShadow = false
         panel.level = .popUpMenu
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
         panel.becomesKeyOnlyIfNeeded = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.delegate = self
+        let glass = NSGlassEffectView(frame: NSRect(origin: .zero, size: Self.size))
+        glass.cornerRadius = 26
         let host = NSHostingView(rootView: EmojiPickerView(model: model, picker: self))
         host.sizingOptions = []
-        panel.contentView = host
+        glass.contentView = host
+        panel.contentView = glass
         return panel
     }()
 
     var isOpen: Bool { panel.isVisible }
 
-    func toggle() { isOpen ? close() : open() }
+    /// fn / 🌐 tap: open in a text field, close if open, retype the last emoji on a quick double tap.
+    func globeTapped() {
+        guard isOpen else { return open(requireTextField: true) }
+        let quick = Date().timeIntervalSince(openedAt) < Self.doubleTapInterval
+        close()
+        if quick, let last = AppSettings.shared.recentEmoji.first {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { EmojiTyper.type(last) }
+        }
+    }
 
-    func open() {
+    func open(requireTextField: Bool = false) {
+        let focus = TextFocus.current()
+        if requireTextField, focus == nil { return }
         model.reset()
-        panel.setFrameOrigin(origin())
+        panel.setFrameOrigin(origin(near: focus?.caret))
         panel.makeKeyAndOrderFront(nil)
+        openedAt = Date()
         model.openCount += 1
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] in self?.handleKey($0) ?? $0 }
     }
@@ -72,36 +90,99 @@ final class EmojiPicker: NSObject, NSWindowDelegate {
         return nil
     }
 
-    /// Below the text caret when the focused app exposes it, otherwise next to the mouse.
-    private func origin() -> NSPoint {
+    /// Just below the caret (above it if there's no room), otherwise next to the mouse.
+    private func origin(near caret: NSRect?) -> NSPoint {
         let size = Self.size
-        let anchor = caretRect() ?? NSRect(origin: NSEvent.mouseLocation, size: .zero)
-        let screen = NSScreen.screens.first { $0.frame.contains(anchor.origin) } ?? NSScreen.main!
+        let anchor = caret ?? NSRect(origin: NSEvent.mouseLocation, size: .zero)
+        let screen = NSScreen.screens.first { $0.frame.insetBy(dx: -1, dy: -1).contains(anchor.origin) } ?? NSScreen.main!
         let frame = screen.visibleFrame
-        var point = NSPoint(x: anchor.minX - 20, y: anchor.minY - size.height - 8)
-        if point.y < frame.minY { point.y = anchor.maxY + 8 }
+        var point = NSPoint(x: anchor.minX - 24, y: anchor.minY - size.height - 6)
+        if point.y < frame.minY { point.y = anchor.maxY + 6 }
         point.x = min(max(point.x, frame.minX + 8), frame.maxX - size.width - 8)
         point.y = min(max(point.y, frame.minY + 8), frame.maxY - size.height - 8)
         return point
     }
+}
 
-    private func caretRect() -> NSRect? {
-        let system = AXUIElementCreateSystemWide()
-        var focused: AnyObject?
-        guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
-              let element = focused else { return nil }
-        let el = element as! AXUIElement
-        var range: AnyObject?
-        guard AXUIElementCopyAttributeValue(el, kAXSelectedTextRangeAttribute as CFString, &range) == .success,
-              let range else { return nil }
-        var bounds: AnyObject?
-        guard AXUIElementCopyParameterizedAttributeValue(el, kAXBoundsForRangeParameterizedAttribute as CFString,
-                                                         range, &bounds) == .success, let bounds else { return nil }
+/// The focused text input of the frontmost app, found through Accessibility.
+struct TextFocus {
+    let caret: NSRect?
+
+    private static let textRoles: Set<String> = ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]
+
+    static func current() -> TextFocus? {
+        guard let front = NSWorkspace.shared.frontmostApplication else { return nil }
+        let app = AXUIElementCreateApplication(front.processIdentifier)
+        AXUIElementSetMessagingTimeout(app, 0.3)
+        guard let el: AXUIElement = copy(app, kAXFocusedUIElementAttribute) ?? copy(AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute),
+              isTextInput(el) else { return nil }
+        return TextFocus(caret: caretRect(el))
+    }
+
+    private static func isTextInput(_ el: AXUIElement) -> Bool {
+        if let role: String = copy(el, kAXRoleAttribute), textRoles.contains(role) { return true }
+        if let subrole: String = copy(el, kAXSubroleAttribute), subrole == "AXSearchField" { return true }
+        // Web content (contenteditable, rich editors) reports an editable ancestor instead of a text role.
+        if (copy(el, "AXEditableAncestor") as AnyObject?) != nil { return true }
+        var settable = DarwinBoolean(false)
+        AXUIElementIsAttributeSettable(el, kAXSelectedTextRangeAttribute as CFString, &settable)
+        return settable.boolValue
+    }
+
+    private static func caretRect(_ el: AXUIElement) -> NSRect? {
+        if let rangeValue: AXValue = copy(el, kAXSelectedTextRangeAttribute) {
+            var range = CFRange()
+            AXValueGetValue(rangeValue, .cfRange, &range)
+            if let rect = bounds(el, range), isUsable(rect) { return flip(rect) }
+            // Many apps return an empty rect for a zero-length range: measure the previous character.
+            if range.location > 0, let rect = bounds(el, CFRange(location: range.location - 1, length: 1)), isUsable(rect) {
+                return flip(CGRect(x: rect.maxX, y: rect.minY, width: 1, height: rect.height))
+            }
+        }
+        // Last resort: the field itself (only useful for single-line fields).
+        guard let posValue: AXValue = copy(el, kAXPositionAttribute), let sizeValue: AXValue = copy(el, kAXSizeAttribute) else { return nil }
+        var pos = CGPoint.zero, size = CGSize.zero
+        AXValueGetValue(posValue, .cgPoint, &pos)
+        AXValueGetValue(sizeValue, .cgSize, &size)
+        guard size.height > 0, size.height < 80 else { return nil }
+        return flip(CGRect(origin: pos, size: size))
+    }
+
+    private static func bounds(_ el: AXUIElement, _ range: CFRange) -> CGRect? {
+        var range = range
+        guard let param = AXValueCreate(.cfRange, &range) else { return nil }
+        var out: AnyObject?
+        guard AXUIElementCopyParameterizedAttributeValue(el, kAXBoundsForRangeParameterizedAttribute as CFString, param, &out) == .success,
+              let value = out, CFGetTypeID(value) == AXValueGetTypeID() else { return nil }
         var rect = CGRect.zero
-        guard AXValueGetValue(bounds as! AXValue, .cgRect, &rect), rect.origin != .zero || rect.height > 0 else { return nil }
-        // AX uses top-left screen coordinates; flip to Cocoa's bottom-left.
-        let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
-        return NSRect(x: rect.minX, y: primaryHeight - rect.maxY, width: max(rect.width, 1), height: rect.height)
+        AXValueGetValue(value as! AXValue, .cgRect, &rect)
+        return rect
+    }
+
+    private static func isUsable(_ r: CGRect) -> Bool { r.height > 0 && !(r.origin.x == 0 && r.origin.y == 0) }
+
+    /// AX uses top-left screen coordinates; Cocoa uses bottom-left.
+    private static func flip(_ r: CGRect) -> NSRect {
+        let h = NSScreen.screens.first?.frame.height ?? 0
+        return NSRect(x: r.minX, y: h - r.maxY, width: max(r.width, 1), height: r.height)
+    }
+
+    private static func copy<T>(_ el: AXUIElement, _ attribute: String) -> T? {
+        var value: AnyObject?
+        guard AXUIElementCopyAttributeValue(el, attribute as CFString, &value) == .success else { return nil }
+        return value as? T
+    }
+
+    /// Electron and Chromium apps only build their accessibility tree when asked to.
+    static func wakeAccessibility(of app: NSRunningApplication) {
+        let el = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(el, 0.3)
+        AXUIElementSetAttributeValue(el, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        let chromium = ["com.google.Chrome", "com.brave.Browser", "com.microsoft.edgemac", "company.thebrowser.Browser",
+                        "com.vivaldi.Vivaldi", "com.operasoftware.Opera", "org.chromium.Chromium"]
+        if let id = app.bundleIdentifier, chromium.contains(where: id.hasPrefix) {
+            AXUIElementSetAttributeValue(el, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+        }
     }
 }
 
@@ -290,7 +371,6 @@ private struct EmojiPickerView: View {
             footer
         }
         .frame(width: EmojiPicker.size.width, height: EmojiPicker.size.height)
-        .glassEffect(.regular, in: .rect(cornerRadius: 26))
         .onChange(of: model.openCount) { searchFocused = true }
         .onChange(of: store.all.count) { model.rebuild() }
         .onChange(of: settings.skinTone) { model.rebuild() }
@@ -314,7 +394,7 @@ private struct EmojiPickerView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
-        .glassEffect(.regular.interactive(), in: .capsule)
+        .background(.primary.opacity(0.07), in: .capsule)
         .padding([.horizontal, .top], 12)
         .padding(.bottom, 6)
     }
@@ -385,7 +465,6 @@ private struct EmojiPickerView: View {
         }
         .padding(.horizontal, 16)
         .frame(height: 50)
-        .background(.primary.opacity(0.04))
     }
 }
 
