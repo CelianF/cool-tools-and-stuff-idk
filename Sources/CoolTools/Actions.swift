@@ -14,6 +14,7 @@ enum Actions {
     static func performHold(_ action: HoldAction) {
         switch action {
         case .none: break
+        case .sleepFocus: FocusMode.toggleSleep()
         case .sleepMac:
             HUD.show(symbol: "powersleep", title: "Sleeping…")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { Shell.run("/usr/bin/pmset", ["sleepnow"]) }
@@ -130,8 +131,8 @@ enum DoNotDisturb {
     private static let defaultKeyCode = 80 // F19
     private static let defaultMods = 0x020000 | 0x040000 | 0x080000 | 0x100000 | 0x800000 // ⇧⌃⌥⌘ fn
 
+    /// No HUD here: macOS shows its own Focus banner.
     static func toggle() {
-        HUD.show(symbol: "moon.fill", title: "Do Not Disturb")
         guard let (keyCode, mods) = ensureHotkey() else {
             HUD.show(symbol: "exclamationmark.triangle.fill", title: "Do Not Disturb unavailable")
             return

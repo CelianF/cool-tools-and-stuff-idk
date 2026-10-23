@@ -9,7 +9,7 @@ A tiny SwiftUI menu bar app that replaces my Karabiner-Elements setup and adds a
 | ⌘F1 / ⌘F2 | Keyboard backlight down / up |
 | ⌃F1 / ⌃F2 | Dark mode / Light mode |
 | F6 (tap) | Toggle Do Not Disturb |
-| F6 (hold) | Put the Mac to sleep (or lock / caffeine — configurable) |
+| F6 (hold) | Toggle Sleep Focus (or sleep / lock / caffeine — configurable) |
 | fn / 🌐 (alone, in a text field) | Liquid Glass emoji picker at the caret, English + French search |
 | fn / 🌐 double tap | Type the last emoji again |
 | Caps Lock on | Caffeinated: no idle sleep, and no sleep with the lid closed |
@@ -37,6 +37,8 @@ permission survives rebuilds), copies it to `/Applications` and launches it.
 
 - **Do Not Disturb** posts macOS' own “Turn Do Not Disturb On/Off” keyboard shortcut (assigning
   ⌃⌥⇧⌘F19 if it has none) — apps can't call the Focus service directly.
+- **Sleep Focus** is toggled through Control Center's Focus list via Accessibility (Control Center
+  flashes open for a moment). The mode is matched by macOS' own localized name for it.
 - **🌐 key**: while the picker is on, macOS' “Press 🌐 key to” is set to *Do Nothing*; the previous
   choice comes back when the picker is turned off or the app quits.
 

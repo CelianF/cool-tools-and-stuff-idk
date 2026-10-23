@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// A clear Liquid Glass tile in the top-right corner, where macOS shows its own volume/brightness HUD.
+/// A Liquid Glass capsule at the top centre of the screen, just under the menu bar, like the system HUD.
 enum HUD {
     private static let model = HUDModel()
     private static var hideWork: DispatchWorkItem?
@@ -15,7 +15,11 @@ enum HUD {
         panel.level = NSWindow.Level(Int(CGWindowLevelForKey(.overlayWindow)))
         panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
-        panel.contentView = NSHostingView(rootView: HUDView(model: model))
+        let glass = NSGlassEffectView(frame: panel.contentRect(forFrameRect: panel.frame))
+        glass.style = .clear
+        glass.cornerRadius = 32
+        glass.contentView = NSHostingView(rootView: HUDView(model: model))
+        panel.contentView = glass
         return panel
     }()
 
@@ -30,7 +34,7 @@ enum HUD {
         model.level = level
         let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
         if let frame = screen?.visibleFrame {
-            panel.setFrameOrigin(NSPoint(x: frame.maxX - panel.frame.width - 10, y: frame.maxY - panel.frame.height - 10))
+            panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.maxY - panel.frame.height - 18))
         }
         panel.alphaValue = 1
         panel.orderFrontRegardless()
@@ -80,6 +84,5 @@ private struct HUDView: View {
         }
         .padding(.horizontal, 18)
         .frame(width: 300, height: 64)
-        .glassEffect(.clear, in: .rect(cornerRadius: 22))
     }
 }

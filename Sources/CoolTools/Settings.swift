@@ -63,17 +63,13 @@ enum HotkeyAction: String, Codable, CaseIterable, Identifiable {
 }
 
 enum HoldAction: String, Codable, CaseIterable, Identifiable {
-    case none, sleepMac, lockScreen, toggleCaffeine
+    case none, sleepFocus, sleepMac, lockScreen, toggleCaffeine
     var id: String { rawValue }
-
-    init(from decoder: Decoder) throws {
-        // Older builds stored "sleepFocus", which needed Shortcuts; fall back to sleeping the Mac.
-        self = HoldAction(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .sleepMac
-    }
 
     var title: String {
         switch self {
         case .none: "Nothing"
+        case .sleepFocus: "Toggle Sleep Focus"
         case .sleepMac: "Put Mac to sleep"
         case .lockScreen: "Lock screen"
         case .toggleCaffeine: "Toggle caffeine"
@@ -93,7 +89,7 @@ struct Hotkey: Codable, Identifiable, Hashable {
         Hotkey(action: .backlightUp, combo: KeyCombo(keyCode: KeyNames.f2, modifiers: .command)),
         Hotkey(action: .darkMode, combo: KeyCombo(keyCode: KeyNames.f1, modifiers: .control)),
         Hotkey(action: .lightMode, combo: KeyCombo(keyCode: KeyNames.f2, modifiers: .control)),
-        Hotkey(action: .doNotDisturb, combo: KeyCombo(keyCode: KeyNames.f6, modifiers: []), hold: .sleepMac),
+        Hotkey(action: .doNotDisturb, combo: KeyCombo(keyCode: KeyNames.f6, modifiers: []), hold: .sleepFocus),
     ]
 }
 
@@ -141,6 +137,12 @@ final class AppSettings {
         var hotkeys = (store.data(forKey: "hotkeys")).flatMap { try? JSONDecoder().decode([Hotkey].self, from: $0) } ?? []
         // Keep saved choices but pick up actions added in newer versions.
         for d in Hotkey.defaults where !hotkeys.contains(where: { $0.action == d.action }) { hotkeys.append(d) }
+        // v1.1 briefly defaulted the F6 hold to sleeping the Mac; Sleep Focus is what was meant.
+        if !store.bool(forKey: "holdSleepFocusMigrated"), let i = hotkeys.firstIndex(where: { $0.action == .doNotDisturb }),
+           hotkeys[i].hold == .sleepMac {
+            hotkeys[i].hold = .sleepFocus
+        }
+        store.set(true, forKey: "holdSleepFocusMigrated")
         self.hotkeys = hotkeys.sorted { a, b in
             HotkeyAction.allCases.firstIndex(of: a.action)! < HotkeyAction.allCases.firstIndex(of: b.action)!
         }
